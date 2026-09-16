@@ -66,6 +66,21 @@ set_lock_pid() {
   } > "$info"
 }
 
+# A real git repository plus a real linked worktree (via `git worktree add`),
+# to exercise actual cross-worktree lock scope rather than a mock of git's
+# behaviour. Prints "<main-checkout-path> <worktree-path>".
+git_repo_with_worktree() {
+  local main="$TMP/gitrepo-$RANDOM-$RANDOM"
+  local wt="$TMP/gitwt-$RANDOM-$RANDOM"
+  mkdir -p "$main"
+  git init -q "$main" >/dev/null 2>&1
+  git -C "$main" config user.email "test@example.com"
+  git -C "$main" config user.name "swarm-test"
+  git -C "$main" commit -q --allow-empty -m "init" >/dev/null 2>&1
+  git -C "$main" worktree add -q -b "wt-branch-$RANDOM" "$wt" >/dev/null 2>&1
+  echo "$main $wt"
+}
+
 # --- acquire on a clean repo -------------------------------------------------
 repo="$(fresh_repo)"
 run_lock "$repo" acquire run-a
@@ -168,6 +183,44 @@ if [[ $CODE -ne 0 ]]; then
   ok "the lock is still exclusively held after a same-run re-acquire"
 else
   FAIL_ "the lock is still exclusively held after a same-run re-acquire" "exit=$CODE" "out: $OUT"
+fi
+
+# --- the lock is scoped to the repository, not the checkout ----------------
+# Regression coverage for the bug QA found: resolving the lock from $(pwd)
+# meant the main checkout and a linked worktree each got their own,
+# independent lock, so two runs could acquire "the same" lock at once and
+# the gate never fired. This can only fail if the fix regresses — it is
+# impossible to pass against the old $(pwd)-scoped implementation, since
+# that implementation has no shared location for these two directories to
+# collide on.
+read -r main_repo wt_repo <<< "$(git_repo_with_worktree)"
+
+run_lock "$main_repo" acquire run-main
+if [[ $CODE -eq 0 ]] && [[ "$OUT" == *"run-main"* ]]; then
+  ok "acquire from the main checkout of a real git repo succeeds"
+else
+  FAIL_ "acquire from the main checkout of a real git repo succeeds" "exit=$CODE" "out: $OUT"
+fi
+
+run_lock "$wt_repo" acquire run-wt
+if [[ $CODE -ne 0 ]] && [[ "$OUT" == *"run-main"* ]]; then
+  ok "acquire from a linked worktree with a different run id is refused and names the main checkout's holder"
+else
+  FAIL_ "acquire from a linked worktree with a different run id is refused and names the main checkout's holder" "exit=$CODE" "out: $OUT"
+fi
+
+run_lock "$wt_repo" release run-main
+if [[ $CODE -eq 0 ]]; then
+  ok "release from the worktree, by the holder, succeeds (lock is repo-scoped, not checkout-scoped)"
+else
+  FAIL_ "release from the worktree, by the holder, succeeds (lock is repo-scoped, not checkout-scoped)" "exit=$CODE" "out: $OUT"
+fi
+
+run_lock "$main_repo" status
+if [[ "$OUT" == *"no lock"* ]]; then
+  ok "after releasing from the worktree, the main checkout sees no lock held"
+else
+  FAIL_ "after releasing from the worktree, the main checkout sees no lock held" "out: $OUT"
 fi
 
 echo

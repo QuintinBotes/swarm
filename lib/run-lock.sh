@@ -8,6 +8,41 @@
 # with no extra dependency. `flock` was considered and rejected: it does not
 # ship on macOS, which this repo must run on.
 #
+# Lock SCOPE — the repository, not the checkout: this plugin orchestrates
+# agents in git worktrees, and every worktree is a separate directory with
+# its own `.swarm/`. Resolving the lock from `$(pwd)` (the original version
+# of this script) meant run A in the main checkout and run B in a worktree
+# each acquired their own, separate lock and the gate never fired — the two
+# runs could still stomp the same task-graph.json et al. `git rev-parse
+# --git-common-dir` returns the same `.git` directory from every worktree of
+# one repository, so the lock lives at `<git-common-dir>/.swarm/lock`
+# instead — one location shared by the whole repo, regardless of which
+# worktree acquires or releases it. Only the lock moves; task-graph.json,
+# current-task-id, and qa-status/ stay per-checkout under the working tree's
+# own `.swarm/`, exactly as before.
+#
+# Normalizing --git-common-dir: it is NOT safe to use verbatim. Empirically
+# (verified against git 2.54 before shipping this): run from the main
+# checkout it prints a path relative to the directory git was run in (e.g.
+# `.git`); run from a linked worktree it already prints an absolute path.
+# Treating the relative form as relative to the wrong directory — or worse,
+# treating it as already comparable to the worktree's absolute form — would
+# silently reintroduce the exact bug this rewrite fixes, just less visibly.
+# So: prefer `git rev-parse --path-format=absolute --git-common-dir` (Git
+# >= 2.31); when that flag isn't available, resolve a relative result
+# against the directory git was told to run in (via `git -C`, not the
+# script's own $PWD); either way, canonicalize the final directory with
+# `cd ... && pwd -P` so a symlinked path (e.g. macOS's /tmp -> /private/tmp)
+# resolves to the same physical location every time.
+#
+# Outside a git repository (or if git itself is unavailable), there is no
+# multi-worktree hazard to guard against, and refusing to lock at all would
+# violate "never strand the operator, never skip the safety net." So this
+# script fails safe by degrading to the lock's original directory-scoped
+# behaviour: `<physical ROOT>/.swarm/lock`. That still prevents two runs
+# colliding in the same directory; it simply can't do repository-wide
+# fencing when there is no repository.
+#
 # Liveness: a lock is "stale" when the process that took it is gone. The pid
 # recorded as the holder defaults to $PPID at acquire/reclaim time — the
 # caller's own process — not $$ of this script, which exits the instant the
@@ -49,14 +84,61 @@
 # Written for bash 3.2 (macOS's shipped bash): no associative arrays, no
 # namerefs, no readarray/mapfile.
 #
-# All state lives under .swarm/lock in the repo; nothing is ever written
-# outside .swarm/. The lock root is the current working directory by default
-# (the swarm always runs from the repo root), overridable via SWARM_ROOT for
-# testing.
+# All lock state lives under .swarm/lock; nothing is ever written outside
+# .swarm/. The directory used to derive the lock's location is the current
+# working directory by default (the swarm always runs from a repo/worktree
+# root), overridable via SWARM_ROOT for testing.
 set -uo pipefail
 
+# Canonicalizes a directory: resolves `.`/`..` and symlinks (e.g. macOS's
+# /tmp -> /private/tmp) so two paths that refer to the same place always
+# compare equal as strings. Empty output means the directory doesn't exist
+# or isn't reachable.
+_physical_path() {
+  local dir="$1"
+  ( cd "$dir" 2>/dev/null && pwd -P )
+}
+
+# Prints the repository's common git dir, canonicalized, or nothing if $1
+# isn't inside a git repository (or git can't be run at all). See the header
+# comment for why this needs `--path-format=absolute` and `-C`, not `$(pwd)`.
+_git_common_dir_abs() {
+  local root="$1" raw resolved
+
+  raw="$(git -C "$root" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)"
+  if [[ -z "$raw" ]]; then
+    # Pre-2.31 git: no --path-format flag. What it prints is relative to the
+    # directory git was told to run in, i.e. $root via `-C`, never the
+    # actual $PWD of this script.
+    raw="$(git -C "$root" rev-parse --git-common-dir 2>/dev/null)"
+    [[ -z "$raw" ]] && return 1
+    case "$raw" in
+      /*) : ;;
+      *)  raw="${root}/${raw}" ;;
+    esac
+  fi
+
+  resolved="$(_physical_path "$raw")"
+  [[ -z "$resolved" ]] && return 1
+  echo "$resolved"
+}
+
+# The base directory the lock lives under: <git-common-dir>/.swarm when
+# $1 is inside a git repository, else <physical $1>/.swarm (fail-safe
+# directory scoping — see header comment).
+_resolve_swarm_dir() {
+  local root="$1" identity
+
+  identity="$(_git_common_dir_abs "$root")"
+  if [[ -z "$identity" ]]; then
+    identity="$(_physical_path "$root")"
+    [[ -z "$identity" ]] && identity="$root"
+  fi
+  echo "${identity}/.swarm"
+}
+
 ROOT="${SWARM_ROOT:-$(pwd)}"
-SWARM_DIR="${ROOT}/.swarm"
+SWARM_DIR="$(_resolve_swarm_dir "$ROOT")"
 LOCK_DIR="${SWARM_DIR}/lock"
 LOCK_INFO="${LOCK_DIR}/info"
 
