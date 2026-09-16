@@ -1,6 +1,6 @@
 ---
-name: swarm
-description: "Orchestrate a parallel agent swarm — compile a spec into exclusive-ownership tasks, execute them in isolated worktrees, run QA per task, and produce a reviewed branch. Invoke with /swarm <spec-path-or-description>."
+name: orchestrator
+description: "Orchestrate a parallel agent swarm (invoked by /swarm) — compile a spec into exclusive-ownership tasks, execute them in isolated worktrees, run QA per task, and produce a reviewed branch. Invoke with /swarm <spec-path-or-description>."
 ---
 
 <SUBAGENT-STOP>
@@ -109,7 +109,7 @@ Spawn the Architect with the Agent tool:
 ### Both modes — validate before dispatching
 
 5. **Check the graph. Every one of these, every time:**
-   - Valid JSON against `skills/swarm/task-graph-schema.json`.
+   - Valid JSON against `skills/orchestrator/task-graph-schema.json`.
    - **No two tasks in the same wave share a file scope entry.** Compare
      resolved globs, not raw strings: `src/api/*.ts` and `src/api/routes.ts`
      overlap even though the strings differ.

@@ -221,7 +221,7 @@ commands/     /swarm, /swarm-status, /spec
 hooks/        scope guard, QA signal, stop gate
 lib/          stack detection, spec detection, validation, readiness scoring, config
 skills/
-  swarm/        the orchestrator
+  orchestrator/ the orchestrator
   swarm-spec/   the spec builder: schema, interrogation protocol, wizard,
                 templates, examples
 tests/        run with bash tests/run-all.sh
