@@ -51,6 +51,7 @@ until an agent could actually implement it — see below.
 | **Drone** | Implementor — one task, one worktree, one branch | Sonnet | its own scope only |
 | **Overlord** | QA and security — validates each Drone before it rejoins the swarm | Sonnet | read-only |
 | **Defiler** | Reviewer — the last gate on the combined diff | Sonnet | read-only |
+| **Changeling** | Interrogator — a fresh-context adversarial read of a finished spec; reports what a Drone would have to guess | Opus | read-only |
 | **Cerebrate** | The coordinating session — dispatches, gates, reports | — | — |
 | **Overmind** | You — issue the directive, approve the partition | — | — |
 
@@ -74,6 +75,48 @@ The invariant is checked three times:
 
 Read [`docs/orchestration.md`](docs/orchestration.md) for the full model,
 including a straight account of what this does **not** guarantee.
+
+---
+
+## Lifecycle gates
+
+Four points in a run used to fail silently. Each now has an explicit gate.
+
+**One run at a time.** Before touching `.swarm/`, the orchestrator takes a
+repository-scoped lock (`lib/run-lock.sh`) resolved via `git rev-parse
+--git-common-dir`, so it holds across every worktree of the repo, not just the
+current checkout. A second `/swarm` against the same repo is refused, by name,
+with the run id already holding it — never two runs silently sharing
+`task-graph.json`. A lock left by a process that no longer exists is
+reclaimable (`run-lock.sh reclaim`), but only by the operator, deliberately —
+the orchestrator never reclaims one on its own.
+
+**Resumable waves.** The orchestrator records each task the instant its Drone
+finishes and each wave the instant it clears QA (`lib/resume-state.sh`) —
+never buffered to the end of the run, because a mid-run death is exactly the
+case this exists for. If the process dies in wave 3, the next `/swarm` on the
+same spec sees which waves are QA-verified, offers to resume from the first
+unfinished one, and — if a wave is only partially done — asks whether to reuse
+the existing task branches or rebuild them, rather than guessing.
+
+**A pre-merge integration check.** Before the merge, not after,
+`lib/check-integration.sh` diffs every task branch against the base, extracts
+the symbols each branch removed, and cross-references them against what every
+other branch still calls. A collision names the symbol and both tasks and
+blocks the merge until the operator decides. It is a textual heuristic, not a
+type checker — it recognises a fixed set of definition shapes per language and
+reports an unrecognised file extension as a coverage gap rather than a pass.
+It narrows the semantic-conflict gap described in
+[`docs/orchestration.md`](docs/orchestration.md); it does not close it — the
+merge build is still the backstop.
+
+**An independent read on the spec.** `/spec` used to grade its own draft with
+only a mechanical scorer. Now, once the scorer says `ready`, it dispatches the
+**Changeling** — a fresh-context agent that reads only the spec and the
+scorer's output, tries to describe a compliant-but-wrong implementation, and
+reports blocking ambiguities a Drone would otherwise have to guess. The session
+that wrote the spec cannot grade it honestly; the Changeling has no memory of
+the conversation that did.
 
 ---
 
@@ -208,20 +251,26 @@ and can corrupt it.
 ├── specs/            ← your specs
 ├── task-graph.json   ← the Queen's battle plan
 ├── current-task-id   ← which Drone this worktree belongs to
-└── qa-status/        ← the Overlord's surveillance feed
+├── qa-status/        ← the Overlord's surveillance feed
+└── resume/           ← wave/task completion, so a dead run can pick back up
 ```
+
+The run lock lives outside this tree, at `<git-common-dir>/.swarm/lock` —
+shared across every worktree of the repository, because two worktrees of one
+repo must never run a swarm at the same time.
 
 ---
 
 ## Layout
 
 ```
-agents/       Queen, Drone, Overlord, Defiler
+agents/       Queen, Drone, Overlord, Defiler, Changeling
 commands/     /swarm, /swarm-status, /spec
 hooks/        scope guard, QA signal, stop gate
-lib/          stack detection, spec detection, validation, readiness scoring, config
+lib/          stack detection, spec detection, validation, readiness scoring,
+              config, run locking, resume state, cross-task integration checking
 skills/
-  swarm/        the orchestrator
+  orchestrator/ the orchestrator
   swarm-spec/   the spec builder: schema, interrogation protocol, wizard,
                 templates, examples
 tests/        run with bash tests/run-all.sh
@@ -236,17 +285,25 @@ docs/         the orchestration model, in full
 bash tests/run-all.sh
 ```
 
-57 tests across four suites. They exercise the real scripts against real
-temporary repositories — the scope guard against real hook payloads, the
-validator against specs that must be rejected, the scorer against specs broken
-one dimension at a time, the detector against generated projects in each
-ecosystem.
+198 tests across nine suites. They exercise the real scripts against real
+temporary repositories and, where relevant, real git branches — the scope
+guard against real hook payloads, the validator against specs that must be
+rejected, the scorer against specs broken one dimension at a time, the
+detector against generated projects in each ecosystem, the agent frontmatter
+against the model-alias rule, the lock against concurrent acquire/release/
+reclaim, resume state against partial and inconsistent waves, the integration
+check against branches with real symbol collisions, and every script's own
+bash 3.2 portability.
 
 ---
 
 ## Status
 
-v0.3.0. Extracted from a private monorepo and generalised.
+v0.4.0. Extracted from a private monorepo and generalised. Of the gaps
+`docs/orchestration.md` named as open, cross-run isolation and wave-level
+resumption are now closed and semantic conflict detection is narrowed but not
+closed — see [Lifecycle gates](#lifecycle-gates) above, and section 7 of that
+document for what is still genuinely open.
 
 ---
 
