@@ -21,6 +21,15 @@ the situation a Drone is in, and most of this skill exists to get a spec there.
 | `wizard.md` | The guided end-to-end flow: gather, draft, interrogate, validate |
 | `templates/`, `examples/` | Starting points. Always start from an example. |
 
+**Two different things share a name.** `interrogation.md` is the protocol
+*you* follow, interactively, to interrogate the user about their own draft
+(step 5 below). The Interrogator *agent* (`agents/interrogator.md`, dispatched
+in step 6) is a separate, one-shot, fresh-context pass over the finished draft
+— it reads the spec the way a Drone would have to, with no memory of the
+conversation that produced it. Run both; they catch different things, and the
+second exists specifically because the session that ran the first cannot grade
+its own output honestly.
+
 Two scripts back this up, and they answer different questions:
 
 - `lib/validate-spec.sh` — **form**. Are the sections present, is every task
@@ -77,11 +86,32 @@ satisfy the validator and tell the swarm nothing.
    improvement, or when the user says stop. Do not stop merely because the
    validator passes.
 
-6. **Validate the form.** `bash ${CLAUDE_PLUGIN_ROOT}/lib/validate-spec.sh <path>`.
+6. **Get an independent read.** Once the scorer says `ready`, dispatch the
+   Interrogator with the Agent tool. This is not redundant with step 5 — you
+   drafted this spec, which makes you the worst-placed judge of whether it is
+   actually finished; the Interrogator has no memory of the conversation that
+   produced it, which is exactly why it can find what you cannot:
+
+   - `description`: "Interrogator: independent read of [spec_id]"
+   - `model`: `"opus"` — always this exact value
+   - `prompt`: the full spec text and the scorer's JSON output from step 5.
+     Nothing else — no conversation history, no draft history. See
+     `agents/interrogator.md` for why.
+
+   Parse its `verdict`. A `BLOCKING` finding sends you back to step 5: treat its
+   `wrongImplementation` and `questionToAsk` the way you would treat a scorer
+   finding, fold the answer in, and re-run the Interrogator once you believe
+   it's fixed — do not just edit the spec and assume the objection is answered.
+   `NON_BLOCKING` findings do not gate; carry them into the handover in step 8
+   rather than dropping them. Anything in `cannotDetermine` is a question for
+   the user, never a gap to guess at.
+
+7. **Validate the form.** `bash ${CLAUDE_PLUGIN_ROOT}/lib/validate-spec.sh <path>`.
    Fix every error; address warnings or say why not.
 
-7. **Save to `.swarm/specs/<spec_id>.md`** unless the user names another path. If
-   any dimension is still below bar, say which, in one line, in the handover.
+8. **Save to `.swarm/specs/<spec_id>.md`** unless the user names another path. If
+   any dimension is still below bar, or the Interrogator left `NON_BLOCKING`
+   findings, say so, in one line, in the handover.
 
 ## Repairing a spec
 
