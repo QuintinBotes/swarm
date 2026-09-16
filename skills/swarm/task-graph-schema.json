@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Swarm Task Graph",
+  "description": "Contract between the Architect agent and the swarm orchestrator. Defines tasks grouped into dependency waves with exclusive file ownership.",
+  "type": "object",
+  "required": ["runId", "specSource", "waves"],
+  "properties": {
+    "runId": {
+      "type": "string",
+      "description": "Unique identifier for this swarm run, format: YYYY-MM-DDTHH-MM-SS_slug",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}-\\d{2}-\\d{2}_[a-z0-9-]+$"
+    },
+    "specSource": {
+      "type": "string",
+      "description": "Path to the spec file or 'inline' if description was provided directly"
+    },
+    "waves": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["wave", "tasks"],
+        "properties": {
+          "wave": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Wave number, executed sequentially. Tasks within a wave run in parallel."
+          },
+          "tasks": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": ["taskId", "title", "description", "fileScope", "verificationCriteria", "dependsOn"],
+              "properties": {
+                "taskId": {
+                  "type": "string",
+                  "pattern": "^T\\d+$",
+                  "description": "Unique task identifier, e.g. T1, T2, T3"
+                },
+                "title": {
+                  "type": "string",
+                  "description": "Short title for the task, used in branch names and logs"
+                },
+                "description": {
+                  "type": "string",
+                  "description": "Detailed description of what this task implements"
+                },
+                "fileScope": {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": { "type": "string" },
+                  "description": "Exhaustive list of file paths this task is allowed to create or modify. Glob patterns allowed (e.g. src/Pricing/Tests/*.cs). No two tasks in the same wave may have overlapping file scopes."
+                },
+                "verificationCriteria": {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": { "type": "string" },
+                  "description": "Concrete, automatable criteria. Each should be verifiable by running a command or checking a condition."
+                },
+                "dependsOn": {
+                  "type": "array",
+                  "items": { "type": "string", "pattern": "^T\\d+$" },
+                  "description": "Task IDs that must complete before this task can start. Tasks with dependencies MUST be in a later wave than all their dependencies."
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
