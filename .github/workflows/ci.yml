@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  tests:
+    name: tests (${{ matrix.os }}, ${{ matrix.shell-label }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # macOS ships bash 3.2. The whole codebase targets it, so this is the
+          # job that matters most — a bash 4+ idiom passes on Linux and breaks
+          # for every macOS user.
+          - os: macos-latest
+            shell-label: bash 3.2
+          - os: ubuntu-latest
+            shell-label: bash 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Report bash version
+        run: /bin/bash --version | head -1
+
+      # The portability lint matters more than the parse check. bash 4 builtins
+      # parse cleanly under 3.2 and are non-fatal at runtime — `declare -A`
+      # degrades to a normal array and exits 0 — so a broken script would pass
+      # both `bash -n` and its own suite while computing wrong answers on macOS.
+      - name: bash 3.2 portability lint
+        run: bash tests/portability/run.sh
+
+      - name: Run the test suite
+        run: bash tests/run-all.sh
+
+  shellcheck:
+    name: shellcheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install shellcheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+      - name: Lint
+        run: |
+          shellcheck --severity=warning --shell=bash \
+            $(find . -name '*.sh' -not -path './.git/*')
+
+  manifests:
+    name: manifests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate JSON
+        run: |
+          fail=0
+          for f in $(find . -name '*.json' -not -path './.git/*'); do
+            if jq . "$f" > /dev/null; then echo "ok   $f"; else echo "FAIL $f"; fail=1; fi
+          done
+          exit $fail
+      - name: Validate every shipped spec against the schema
+        run: |
+          fail=0
+          for f in skills/swarm-spec/examples/*.md skills/swarm-spec/templates/*.md; do
+            if bash lib/validate-spec.sh "$f" > /dev/null; then
+              echo "ok   $f"
+            else
+              echo "FAIL $f"; bash lib/validate-spec.sh "$f"; fail=1
+            fi
+          done
+          exit $fail
+      - name: Assert no internal references leaked
+        run: |
+          # --exclude this file: it necessarily contains the terms it searches for.
+          if grep -rilE 'mewssystems|hivemind|hatchery' . \
+               --exclude-dir=.git --exclude=ci.yml; then
+            echo "Internal reference found above."
+            exit 1
+          fi
+          echo "clean"
