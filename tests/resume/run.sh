@@ -181,7 +181,7 @@ check "malformed graph: status still emits JSON"  '"nextWave"' "$out_d"
 check_eq "malformed graph: next-wave falls back to 1" "1" "$(run_rs "$REPO_D" next-wave)"
 
 rm -f "$REPO_D/.swarm/task-graph.json"
-out_e=$(run_rs "$REPO_D" status); code_e=$?
+run_rs "$REPO_D" status >/dev/null 2>&1; code_e=$?
 check_eq "missing graph: status does not crash" "0" "$code_e"
 check_eq "missing graph: next-wave falls back to 1" "1" "$(run_rs "$REPO_D" next-wave)"
 
@@ -191,7 +191,7 @@ out_f=$(run_rs "$REPO_D" record-wave abc); code_f=$?
 check_eq "record-wave rejects a non-integer" "1" "$code_f"
 check "record-wave explains why on stdout" "positive integer" "$out_f"
 
-out_g=$(run_rs "$REPO_D" record-task nope); code_g=$?
+run_rs "$REPO_D" record-task nope >/dev/null 2>&1; code_g=$?
 check_eq "record-task rejects a malformed id" "1" "$code_g"
 
 echo
