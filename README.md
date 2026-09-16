@@ -289,13 +289,16 @@ repo must never run a swarm at the same time.
 agents/       Queen, Drone, Overlord, Defiler, Changeling
 commands/     /swarm, /swarm-status, /spec
 hooks/        scope guard, QA signal, stop gate
+hooks/hooks.json  registers them — loose scripts in hooks/ never fire
 lib/          stack detection, spec detection, validation, readiness scoring,
-              config, run locking, resume state, cross-task integration checking
+              run locking, resume state, integration checking, scope checking,
+              config
 skills/
   orchestrator/ the orchestrator
   swarm-spec/   the spec builder: schema, interrogation protocol, wizard,
                 templates, examples
-tests/        run with bash tests/run-all.sh
+tests/        the shell layer and the script/prompt wiring contract
+evals/        prompt behaviour, via claude plugin eval
 docs/         the orchestration model, in full
 ```
 
@@ -303,21 +306,38 @@ docs/         the orchestration model, in full
 
 ## Tests
 
+Three layers, because each catches what the others cannot.
+
 ```bash
-bash tests/run-all.sh
+bash tests/run-all.sh          # the shell layer, free and offline
+claude plugin validate .       # manifests, free and offline
+claude plugin eval . --trust-plugin --scaffold \
+  --allow-tools Write,Edit,Bash --runs 1   # the prompt layer, costs real calls
 ```
 
-198 tests across nine suites. They exercise the real scripts against real
-temporary repositories and, where relevant, real git branches — the scope
-guard against real hook payloads, the validator against specs that must be
-rejected, the scorer against specs broken one dimension at a time, the
-detector against generated projects in each ecosystem, the agent frontmatter
-against the model-alias rule, the lock against concurrent acquire/release/
-reclaim, resume state against partial and inconsistent waves, the integration
-check against branches with real symbol collisions, and every script's own
-bash 3.2 portability.
+**`tests/`** covers the scripts. 245 assertions across 11 suites, exercising the
+real code against generated repositories and real hook payloads: the scope guard
+against actual hook JSON, the validator against specs that must be rejected, the
+detector against projects in each ecosystem it claims to know.
 
----
+**`tests/wiring/`** covers the contract between the scripts and the prompts. A
+script can ship, pass its own suite, and never be invoked by anything — every
+test green and the capability nonexistent. That happened here: `resume-state.sh`
+had 31 passing tests while the orchestrator never read `next-wave` back. These
+assertions check that every script is referenced, every path in a prompt
+resolves, paired verbs are both wired, and the gates appear before the merge.
+
+**`evals/`** covers behaviour. `claude plugin eval` runs each case with the
+plugin and again without it, so the delta isolates what the plugin causes rather
+than what a capable model would have done anyway. This is how the scope guard is
+verified end to end: with the plugin the write is refused and the trace carries
+the guard's own words; without it, the file gets written. Evals need real model
+calls, so they are a hand-run pre-release gate, not CI. See
+[`evals/README.md`](evals/README.md).
+
+A test that cannot fail proves nothing. Every suite here was written by breaking
+the thing it covers, watching the test fail, and then restoring it.
+
 
 ## Contributing
 

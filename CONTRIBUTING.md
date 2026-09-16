@@ -97,6 +97,29 @@ CI runs all of this on macOS and Linux. The matrix is not thoroughness for its
 own sake — see Hard rules for why a Linux-only check would be actively
 misleading here.
 
+## The three test layers
+
+Know which layer your change belongs to, because they catch different things.
+
+| layer | covers | cost |
+|---|---|---|
+| `tests/` | the shell scripts | free, offline, runs in CI |
+| `tests/wiring/` | the contract between scripts and prompts | free, offline, runs in CI |
+| `evals/` | prompt behaviour, via `claude plugin eval` | real model calls, hand-run |
+
+**`tests/wiring/` exists because of a specific failure.** A script can ship, pass
+its own suite, and never be invoked by anything: every test green, capability
+nonexistent. `lib/resume-state.sh` had 31 passing tests while Phase 2 of the
+orchestrator never read `next-wave` back, so wave state was recorded, reported,
+and discarded. If you add a `lib/` script, add a wiring assertion that it is
+actually called — and if it has a paired verb, that both halves are wired.
+
+**`evals/` exists because no bash suite can execute a prompt.** The orchestrator
+and the spec builder are instructions. Each case runs with and without the
+plugin so the delta isolates what the plugin causes. Run it before tagging a
+release and record the result in the pull request. A zero delta is not
+automatically a failure — see `evals/README.md` for which cases expect one.
+
 ## A note on tests
 
 A test that cannot fail proves nothing. Every suite here was written by breaking
