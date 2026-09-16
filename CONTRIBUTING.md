@@ -1,6 +1,13 @@
-# Swarm — development conventions
+# Contributing to Swarm
 
-A Claude Code plugin. No compiled code: bash, markdown, and JSON schemas.
+A Claude Code plugin. No compiled code — bash, markdown, and JSON schemas. To
+work on it, clone it and run `claude --plugin-dir .` from the checkout.
+
+```bash
+bash tests/run-all.sh          # every suite
+bash tests/portability/run.sh  # the one that matters most; see Hard rules
+claude plugin validate . --strict
+```
 
 ## Commands
 
@@ -75,3 +82,23 @@ Each suite is `tests/<name>/run.sh`, exits non-zero on failure, and is picked up
 by `run-all.sh` automatically. Tests exercise the real scripts against real
 temporary directories. A test that only asserts over a checked-in fixture proves
 the fixture is well-formed and nothing else.
+
+
+## Before opening a pull request
+
+1. `bash tests/run-all.sh` passes.
+2. `claude plugin validate . --strict` passes.
+3. `shellcheck --severity=warning --shell=bash $(find . -name '*.sh' -not -path './.git/*')` is clean.
+4. If you changed a hook, confirm `claude plugin details` still reports three
+   hooks against a real install. A hook that is not registered is inert, and
+   nothing else in the repository will tell you.
+
+CI runs all of this on macOS and Linux. The matrix is not thoroughness for its
+own sake — see Hard rules for why a Linux-only check would be actively
+misleading here.
+
+## A note on tests
+
+A test that cannot fail proves nothing. Every suite here was written by breaking
+the thing it covers, watching the test fail, and then restoring it. If you add a
+test, do the same, and say so in the pull request.

@@ -2,6 +2,27 @@
 
 ## 0.4.0 — 2026-09-16
 
+### Packaging and release readiness
+
+- **`.claude-plugin/marketplace.json`.** The README documented an install
+  command that could not work: a plugin is resolved through a marketplace and
+  none was declared, so nobody could install this repository. The repository is
+  now its own marketplace, and the README documents the two commands that
+  actually work, plus how to confirm the hooks registered.
+- **`lib/check-scope.sh`.** Post-hoc verification that each task branch stayed
+  inside its declared file scope. The PreToolUse guard enforces this at write
+  time, but only when the plugin is installed and the agent runs under its
+  hooks; an orchestrator dispatching agents another way had no enforcement at
+  all. Requires the orchestrator to record each task's `baseCommit`, which it
+  now does — the base cannot be inferred, because a later wave forks from the
+  previous wave's integration commit and diffing against the run's base branch
+  attributes every earlier file to it.
+- `CONTRIBUTING.md` replaces the root `CLAUDE.md`, which was never shipped as
+  plugin context. Agent context moved to `.claude/CLAUDE.md`, and
+  `claude plugin validate --strict` now passes, so CI can use it.
+- Issue and pull-request templates, both pointed at the failure modes that are
+  silent here: an unregistered hook, and a test that cannot fail.
+
 Closes two of the gaps `docs/orchestration.md` section 7 named as open —
 cross-run isolation and wave-level resumption — and narrows a third, semantic
 conflict detection, without closing it. Adds a fourth capability, independent

@@ -1,0 +1,20 @@
+{
+  "name": "swarm",
+  "description": "Parallel agent orchestration for Claude Code.",
+  "owner": {
+    "name": "Quintin Botes",
+    "url": "https://github.com/QuintinBotes"
+  },
+  "plugins": [
+    {
+      "name": "swarm",
+      "source": "./",
+      "description": "Parallel agent orchestrator — author a spec, decompose it into exclusive-ownership tasks, execute them across isolated git worktrees, gate the merge on QA and review.",
+      "version": "0.4.0",
+      "author": { "name": "Quintin Botes" },
+      "homepage": "https://github.com/QuintinBotes/swarm",
+      "license": "MIT",
+      "keywords": ["orchestration", "multi-agent", "worktree", "spec-driven-development"]
+    }
+  ]
+}
