@@ -135,13 +135,20 @@ its module, T2 consumes the old name from its own. Git merges both cleanly. The
 build fails. The file-ownership guarantee is precisely and only a guarantee
 about text, and this is the failure mode it does not cover.
 
-Three things mitigate it, none completely: the Reviewer sees the combined diff
-and is explicitly tasked with cross-task consistency, being the only agent that
-could catch this; the merged branch gets a full build and test run in phase 5,
-which is the first moment the combination executes at all; and waves are
-sequenced, so a task that depends on another's interface runs after it, against
-real code. It remains the most likely way a run produces a broken branch, and
-you should expect it rather than be surprised by it.
+Four things mitigate it, none completely. `lib/check-integration.sh` now runs
+before the merge, in phase 4: it diffs each task branch against the base,
+extracts symbols the branch removed, and cross-references them against what
+every other branch still calls, naming the symbol and both tasks on a hit. It
+is a textual heuristic, not a type checker — it recognises a fixed set of
+definition shapes per language and reports an unrecognised extension as a
+coverage gap rather than guessing at it — so it catches the case named above
+and nothing subtler than that. Past it: the Reviewer sees the combined diff and
+is explicitly tasked with cross-task consistency, catching what the heuristic
+cannot; the merged branch gets a full build and test run in phase 5, which is
+the first moment the combination actually executes; and waves are sequenced, so
+a task that depends on another's interface runs after it, against real code.
+It remains the most likely way a run produces a broken branch, and you should
+expect it rather than be surprised by it.
 
 **Concurrent git operations corrupt shared metadata.** Worktrees of one
 repository share `.git`. Running git commands across several of them at once
@@ -247,13 +254,28 @@ than agent quality.
 
 Named honestly rather than left as a pleasant surprise.
 
-- **Cross-run isolation.** Two swarms on one repo at once will collide. There is
-  no lock.
-- **Wave-level resumption.** A failed run restarts from phase 0. Completed task
-  branches survive, but re-entering mid-graph is manual.
-- **Semantic conflict detection.** Nothing analyses interface compatibility
-  across task boundaries before the merge build. This is the highest-value gap.
 - **Cost accounting.** Token reporting depends on what Claude Code exposes, so
   the run cannot be budgeted in advance.
 - **Spec-to-code drift detection.** Once the branch merges, nothing notices when
   the code moves away from the spec that produced it.
+
+Three gaps that used to sit in this list are addressed, with caveats worth
+reading before you rely on them:
+
+- **Cross-run isolation** is closed. `lib/run-lock.sh` takes a
+  repository-scoped lock, acquired in orchestrator phase 0 before `.swarm/` is
+  touched, and a second run against the same repo is refused by name rather
+  than colliding silently. A lock left by a dead process is reclaimable, but
+  only by explicit operator action — the orchestrator never reclaims one
+  itself.
+- **Wave-level resumption** is closed. `lib/resume-state.sh` records each task
+  and each wave the instant it completes, and a fresh orchestrator process
+  reads that state back, cross-checked against git, instead of restarting from
+  phase 0. A wave recorded only partially complete is surfaced to the operator
+  to decide, not resolved automatically.
+- **Semantic conflict detection** is narrowed, not closed. `lib/check-integration.sh`
+  runs before the merge and catches the specific failure mode described in
+  section 4 — one branch removes or renames something another branch still
+  calls — but it is a textual heuristic, not a type checker, and it reports an
+  unrecognised language as a coverage gap rather than a pass. See section 4 for
+  the full account of what still falls through.
