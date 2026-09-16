@@ -198,7 +198,29 @@ Spawn the Architect with the Agent tool:
 
 ## Phase 2 — Execute, wave by wave
 
-For each wave in order:
+**Start from the resume point, not from wave 1:**
+
+```bash
+START_WAVE=$(bash ${CLAUDE_PLUGIN_ROOT}/lib/resume-state.sh next-wave)
+```
+
+Waves before `START_WAVE` are already complete and QA-passed; their task
+branches exist. Skip them and say which ones you skipped, so the operator can
+see what was reused rather than rebuilt.
+
+If `START_WAVE` is greater than 1, re-run the scope check over the completed
+waves before continuing — resuming means trusting work this session did not
+watch being produced:
+
+```bash
+bash ${CLAUDE_PLUGIN_ROOT}/lib/check-scope.sh . .swarm/task-graph.json
+```
+
+Recording state and never reading it back is the failure this exists to
+prevent: it produces an orchestrator that reports what was completed and then
+discards it anyway.
+
+For each wave from `START_WAVE` onward:
 
 **Spawn every task in the wave in a single message, one Agent call per task.**
 Separate messages run them sequentially and throw away the entire point.
