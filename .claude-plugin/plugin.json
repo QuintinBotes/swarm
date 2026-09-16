@@ -1,0 +1,13 @@
+{
+  "name": "swarm",
+  "description": "Parallel agent swarm orchestrator — author a spec, decompose it into exclusive-ownership tasks, execute them across isolated git worktrees, and gate the merge on QA and review.",
+  "version": "0.3.0",
+  "author": {
+    "name": "Quintin Botes",
+    "url": "https://github.com/QuintinBotes"
+  },
+  "homepage": "https://github.com/QuintinBotes/swarm",
+  "repository": "https://github.com/QuintinBotes/swarm",
+  "license": "MIT",
+  "keywords": ["orchestration", "multi-agent", "worktree", "spec-driven-development"]
+}
