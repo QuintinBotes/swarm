@@ -2,7 +2,12 @@
 # hooks/pre-tool-use-scope-guard.sh
 # PreToolUse hook: blocks Implementor writes outside declared file scope.
 # Reads Claude Code hook JSON from stdin.
-# Exits 0 to allow, exits 2 to block (with reason on stdout).
+# Exits 0 to allow, exits 2 to block.
+#
+# The block reason goes to STDERR, not stdout. Claude Code reads a blocking
+# hook's feedback from stderr; a reason written to stdout is silently dropped,
+# so the write is refused with no explanation of why. That is worse than not
+# blocking at all, because the agent cannot act on it.
 
 set -euo pipefail
 
@@ -55,7 +60,7 @@ FILE_SCOPES=$(jq -r --arg tid "$TASK_ID" '
 ' "$TASK_GRAPH" 2>/dev/null)
 
 if [[ -z "$FILE_SCOPES" ]]; then
-  echo "BLOCKED: Could not find fileScope for task $TASK_ID in task-graph.json"
+  echo "BLOCKED: Could not find fileScope for task $TASK_ID in task-graph.json" >&2
   exit 2
 fi
 
@@ -86,7 +91,7 @@ fi
 case "$NORM_PATH" in
   "$REPO_ROOT"/*) REL_PATH="${NORM_PATH#$REPO_ROOT/}" ;;
   *)
-    echo "BLOCKED: '$FILE_PATH' resolves outside the repository root."
+    echo "BLOCKED: '$FILE_PATH' resolves outside the repository root." >&2
     exit 2
     ;;
 esac
@@ -144,12 +149,14 @@ while IFS= read -r scope; do
 done <<< "$FILE_SCOPES"
 
 if [[ "$MATCHED" == "false" ]]; then
-  echo "BLOCKED: File '$REL_PATH' is outside task $TASK_ID's declared scope."
-  echo ""
-  echo "Allowed files for $TASK_ID:"
-  echo "$FILE_SCOPES" | sed 's/^/  - /'
-  echo ""
-  echo "If you need to modify this file, report it in your completion summary."
+  {
+    echo "BLOCKED: File '$REL_PATH' is outside task $TASK_ID's declared scope."
+    echo ""
+    echo "Allowed files for $TASK_ID:"
+    echo "$FILE_SCOPES" | sed 's/^/  - /'
+    echo ""
+    echo "If you need to modify this file, report it in your completion summary."
+  } >&2
   exit 2
 fi
 

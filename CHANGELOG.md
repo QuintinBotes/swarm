@@ -1,5 +1,63 @@
 # Changelog
 
+## 0.4.0 — 2026-09-16
+
+Closes two of the gaps `docs/orchestration.md` section 7 named as open —
+cross-run isolation and wave-level resumption — and narrows a third, semantic
+conflict detection, without closing it. Adds a fourth capability, independent
+spec grading, that section 7 never listed because it wasn't framed as a gap
+until the interrogation protocol's own prior decisions said building it as
+only a document was a mistake. Cost accounting and spec-to-code drift
+detection remain open; both still need data this plugin cannot observe.
+
+### Added
+
+- **Run locking.** `lib/run-lock.sh` takes a repository-scoped lock (keyed off
+  `git rev-parse --git-common-dir`, so it holds across every worktree of one
+  repository, not just the current checkout) before the orchestrator touches
+  `.swarm/`. A second run against the same repo is refused, naming the run id
+  already holding the lock, instead of two runs sharing `task-graph.json` and
+  corrupting each other's state. A lock left by a dead process is reclaimable,
+  but only by explicit operator action — the orchestrator never reclaims one on
+  its own.
+- **Wave-level resumption.** `lib/resume-state.sh` records each task the
+  instant its Drone finishes and each wave the instant it clears QA — never
+  buffered to the end of the run, because a mid-run death is exactly the case
+  this exists for. A fresh orchestrator process reads that state, cross-checks
+  it against which task branches actually still exist in git, and reports the
+  wave to resume from instead of restarting a verified run from wave 1. A wave
+  recorded only partially complete is surfaced to the operator to decide —
+  reuse the existing task branches or rebuild them — rather than the
+  orchestrator picking for them.
+- **Pre-merge integration checking.** `lib/check-integration.sh` runs before
+  the merge, in orchestrator phase 4, and extracts symbols each task branch
+  removed, cross-referencing them against what every other branch still calls.
+  A collision names the symbol and both tasks and blocks the merge pending an
+  operator decision. It is textual and heuristic by design — a real
+  cross-language type checker is out of proportion for a plugin with no build
+  step of its own — and it reports an unrecognised file extension as a coverage
+  gap rather than a silent pass. It narrows, but does not close, the
+  semantic-conflict gap described in `docs/orchestration.md` section 4; the
+  merge build remains the backstop.
+- **The Interrogator agent** (`agents/interrogator.md`, "the Changeling") — a
+  fresh-context agent that reads only a finished spec and the scorer's output,
+  tries to describe a compliant-but-wrong implementation, and reports blocking
+  ambiguities a Drone would otherwise have to guess. `/spec` now dispatches it
+  once the mechanical scorer reports `ready`, because the session that drafted
+  the spec is structurally the wrong session to grade it. `BLOCKING` findings
+  send the spec back to interrogation; `NON_BLOCKING` findings are reported,
+  not enforced. The orchestrator can also dispatch it as an optional gate
+  before a wide or expensive run.
+
+### Changed
+
+- **`docs/orchestration.md`** section 7 now reflects the above: cross-run
+  isolation and wave-level resumption move out of "what is not built"; the
+  semantic-conflict paragraph in section 4 references the new pre-merge check
+  while staying honest that a textual heuristic does not catch everything. Cost
+  accounting and spec-to-code drift detection stay in section 7, unchanged —
+  they are still true.
+
 ## 0.3.0 — 2026-09-16
 
 First standalone release. Extracted from a private monorepo, generalised to run

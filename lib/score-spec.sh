@@ -89,7 +89,6 @@ constraint_count=$(printf '%s' "$constraints" | grep -c '^- ')
 constraint_hedges=$(printf '%s' "$constraints" | grep -ioE "$HEDGES" | sort -u | tr '\n' ' ' | sed 's/[[:space:]]*$//')
 # A constraint that talks about speed, size, or volume but carries no number.
 perf_lines=$(printf '%s' "$constraints" | grep -icE 'latency|throughput|p9[0-9]|perform|fast|slow|memory|size|volume|rate|concurren|timeout|duration')
-perf_numbers=$(printf '%s' "$constraints" | grep -cE 'latency|throughput|p9[0-9]|perform|fast|slow|memory|size|volume|rate|concurren|timeout|duration' 2>/dev/null)
 quantified=$(printf '%s' "$constraints" | grep -cE '[0-9]+[[:space:]]*(ms|s\b|sec|second|minute|hour|day|%|rps|qps|req|MB|GB|KB|kb|mb|gb)')
 # Instructions masquerading as constraints.
 instructions=$(printf '%s' "$constraints" | grep -inE '^- (use|add|create|build|write|implement|call|store (it )?in|put (it )?in)\b' | head -3 | tr '\n' ';' | sed 's/;$//')
@@ -160,7 +159,6 @@ if (( thin_tasks > 0 )); then
 fi
 
 # --- 6. Verification criteria -----------------------------------------------
-crit_total=$(printf '%s' "$criteria" | grep -c '^- ')
 crit_prog=$(printf '%s' "$criteria" | grep -c '\[programmatic\]')
 crit_human=$(printf '%s' "$criteria" | grep -c '\[human\]')
 # The tag itself is usually backticked, so it has to be stripped before looking
@@ -176,7 +174,6 @@ crit_hedges=$(printf '%s' "$criteria" | grep -ioE "$HEDGES" | sort -u | tr '\n' 
 # the second kind has no gate.
 crit_discriminating=$(printf '%s' "$criteria" | grep '\[programmatic\]' \
   | grep -ciE 'covered by|\bshall\b|\bmust\b|\bwhen\b|\bgiven\b')
-crit_generic=$((crit_prog - crit_discriminating))
 
 criteria_verdict="ready"
 if (( crit_prog == 0 )); then
