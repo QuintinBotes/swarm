@@ -13,14 +13,36 @@ Defiler reviews the combined result.
 
 ## Install
 
+This repository is its own marketplace, so installing takes two commands:
+
 ```bash
-claude plugin install swarm
+claude plugin marketplace add QuintinBotes/swarm
+claude plugin install swarm@swarm
 ```
 
-Or from inside a session: `/plugin install swarm`
+Or from inside a session:
+
+```
+/plugin marketplace add QuintinBotes/swarm
+/plugin install swarm@swarm
+```
+
+To run it from a local checkout instead, point Claude Code at the directory:
+
+```bash
+claude --plugin-dir /path/to/swarm
+```
 
 Requires `git`, `jq`, and `bash`. Everything is shell and markdown; there is
 nothing to compile.
+
+Confirm the hooks registered — the scope guard is the only runtime enforcement
+of the file-ownership guarantee, and a plugin whose hooks did not register
+reports zero here:
+
+```bash
+claude plugin details swarm@swarm    # Hooks (3)
+```
 
 ---
 
@@ -294,6 +316,14 @@ against the model-alias rule, the lock against concurrent acquire/release/
 reclaim, resume state against partial and inconsistent waves, the integration
 check against branches with real symbol collisions, and every script's own
 bash 3.2 portability.
+
+---
+
+## Contributing
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md). The short version: bash 3.2 only, hooks
+must be registered and inert outside a run, and a test that cannot fail proves
+nothing.
 
 ---
 

@@ -220,7 +220,29 @@ Per task:
 `.swarm/current-task-id` containing its task id, or the PreToolUse hook cannot
 tell which scope to enforce and will allow everything.
 
+**Also record each task's `baseCommit` in the task graph** — the commit its
+worktree is created from. `git rev-parse HEAD` for wave 1; the previous wave's
+integration commit for every later wave.
+
+This is not bookkeeping. `lib/check-scope.sh` verifies after the fact that each
+branch stayed inside its declared scope, and it cannot infer the base: a wave-2
+branch forks from the wave-1 integration commit, so diffing it against the run's
+base branch attributes every wave-1 file to it and reports violations that did
+not happen. The base is known here and nowhere else.
+
 ### When the wave returns
+
+0. **Verify scope compliance before anything else:**
+
+   ```bash
+   bash ${CLAUDE_PLUGIN_ROOT}/lib/check-scope.sh . .swarm/task-graph.json
+   ```
+
+   The PreToolUse scope guard blocks out-of-scope writes while a Drone runs, but
+   only when this plugin is installed and the Drone runs under its hooks. When
+   it is not, this is the only enforcement there is. A violation means the
+   ownership invariant broke, so stop and report which task wrote outside its
+   scope rather than merging and finding out later.
 
 1. Collect each Drone's report.
 2. On any failure, show it and offer: (a) retry that task, (b) skip it and
