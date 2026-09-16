@@ -115,6 +115,51 @@ for f in "$ROOT"/agents/*.md; do
   fi
 done
 
+# --- defects found by a real end-to-end run ---------------------------------
+# All three below passed every unit test and every eval case, and broke the
+# first time /swarm was actually invoked. They are asserted here because none
+# of them is reachable by testing a script in isolation.
+
+SCHEMA="${ROOT}/skills/orchestrator/task-graph-schema.json"
+
+# 1. A runId is built from the spec_id, and spec_id's own documented format is
+#    <YYYY-MM-DD>_<kebab-name> — it contains an underscore. A runId pattern that
+#    forbids underscores in the slug rejects every id the orchestrator produces.
+pattern=$(jq -r '.properties.runId.pattern' "$SCHEMA" 2>/dev/null)
+sample="2026-09-16T10-10-34_2026-09-16_string-helpers"
+if printf '%s' "$sample" | grep -qE "$(printf '%s' "$pattern" | sed 's/\\d/[0-9]/g')"; then
+  ok "the runId pattern accepts a runId built from a real spec_id"
+else
+  bad "the runId pattern rejects '${sample}', which is what building a runId from spec_id produces"
+fi
+
+# 2. Git stores a branch as a file at refs/heads/<name>, so swarm/<runId> cannot
+#    exist while swarm/<runId>/<taskId> does — git refuses with 'cannot lock ref'.
+#    The integration branch must not be a path prefix of the task branches.
+feature=$(grep -o 'FEATURE_BRANCH="[^"]*"' "$skill" 2>/dev/null | head -1 | sed 's/.*="\(.*\)"/\1/')
+if [[ "$feature" == "swarm/[runId]" ]]; then
+  bad "the integration branch '${feature}' is a path prefix of swarm/[runId]/[taskId] — git cannot hold both"
+elif [[ -n "$feature" ]]; then
+  ok "the integration branch '${feature}' does not collide with the task branches"
+else
+  bad "no FEATURE_BRANCH found in the orchestrator"
+fi
+
+# 3. lib/check-integration.sh and lib/check-scope.sh resolve a base from the
+#    graph's baseBranch. If the schema does not require it, the orchestrator
+#    does not write it, and the pre-merge gate cannot run unattended.
+if jq -e '.required | index("baseBranch")' "$SCHEMA" >/dev/null 2>&1; then
+  ok "the schema requires baseBranch, so the pre-merge gates can resolve a base"
+else
+  bad "baseBranch is not required by the schema — check-integration --task-graph has nothing to read"
+fi
+
+if jq -e '.properties.waves.items.properties.tasks.items.properties.baseCommit' "$SCHEMA" >/dev/null 2>&1; then
+  ok "the schema documents baseCommit, which check-scope.sh requires"
+else
+  bad "baseCommit is undocumented in the schema"
+fi
+
 echo
 echo "wiring: ${PASS} passed, ${FAIL} failed"
 [[ $FAIL -eq 0 ]]

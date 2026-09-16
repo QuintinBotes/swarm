@@ -242,6 +242,10 @@ Per task:
 `.swarm/current-task-id` containing its task id, or the PreToolUse hook cannot
 tell which scope to enforce and will allow everything.
 
+**Record `baseBranch` in the graph too** — the branch the run started from.
+`lib/check-integration.sh --task-graph` and `lib/check-scope.sh` read it so
+they do not have to be handed a base.
+
 **Also record each task's `baseCommit` in the task graph** — the commit its
 worktree is created from. `git rev-parse HEAD` for wave 1; the previous wave's
 integration commit for every later wave.
@@ -372,10 +376,17 @@ On `APPROVE`, continue. On `REQUEST_CHANGES`, show the feedback and offer
 
 ## Phase 5 — Merge and hand over
 
-1. **Merge serially, in wave order:**
+1. **Merge serially, in wave order.**
+
+   The integration branch is `swarm/<runId>-integration`, not `swarm/<runId>`.
+   Git stores a branch as a file at `refs/heads/<name>`, so `swarm/<runId>`
+   cannot exist while `swarm/<runId>/<taskId>` does — the first is a file, the
+   second needs it to be a directory. Git refuses with `cannot lock ref`. The
+   suffix is what makes both nameable at once.
+
 
 ```bash
-FEATURE_BRANCH="swarm/[runId]"
+FEATURE_BRANCH="swarm/[runId]-integration"
 git checkout -b "$FEATURE_BRANCH" "$BASE_BRANCH"
 # then, one at a time, in wave order:
 git merge --no-ff "<branch-for-taskId>" -m "merge [taskId]: [title]"
